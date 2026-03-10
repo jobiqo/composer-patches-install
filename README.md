@@ -1,6 +1,6 @@
 # jobiqo/composer-patches-install
 
-A Composer plugin that detects `patches.lock.json` changes and automatically triggers re-patching of affected packages.
+A Composer plugin that detects `patches.lock.json` changes and automatically triggers re-patching of affected packages. See https://github.com/cweagans/composer-patches/issues/583
 
 ## What it does
 
