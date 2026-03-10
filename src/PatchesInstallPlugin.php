@@ -52,6 +52,7 @@ class PatchesInstallPlugin implements PluginInterface, EventSubscriberInterface 
   public static function getSubscribedEvents(): array {
     return [
       ScriptEvents::PRE_INSTALL_CMD => ['onPreInstall', 0],
+      ScriptEvents::PRE_UPDATE_CMD => ['onPreInstall', 0],
       ScriptEvents::POST_INSTALL_CMD => ['checkPatchChanges', 0],
       ScriptEvents::POST_UPDATE_CMD => ['checkPatchChanges', 0],
     ];
