@@ -52,8 +52,8 @@ class PatchesInstallPlugin implements PluginInterface, EventSubscriberInterface 
   public static function getSubscribedEvents(): array {
     return [
       ScriptEvents::PRE_INSTALL_CMD => ['onPreInstall', 0],
-      ScriptEvents::POST_INSTALL_CMD => ['onPostInstall', 0],
-      ScriptEvents::POST_UPDATE_CMD => ['onPostUpdate', 0],
+      ScriptEvents::POST_INSTALL_CMD => ['checkPatchChanges', 0],
+      ScriptEvents::POST_UPDATE_CMD => ['checkPatchChanges', 0],
     ];
   }
 
@@ -64,20 +64,6 @@ class PatchesInstallPlugin implements PluginInterface, EventSubscriberInterface 
     // This hook is only called when composer already installed something before,
     // so we always know this is not a fresh install.
     self::$isFreshInstall = FALSE;
-  }
-
-  /**
-   * Handles the post-install-cmd event.
-   */
-  public function onPostInstall(Event $event): void {
-    $this->checkPatchChanges($event);
-  }
-
-  /**
-   * Handles the post-update-cmd event.
-   */
-  public function onPostUpdate(Event $event): void {
-    $this->checkPatchChanges($event);
   }
 
   /**
