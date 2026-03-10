@@ -17,6 +17,6 @@
         }
     },
     "extra": {
-        "class": "Jobiqo\\ComposerPatchesInstall\\Plugin"
+        "class": "Jobiqo\\ComposerPatchesInstall\\PatchesInstallPlugin"
     }
 }

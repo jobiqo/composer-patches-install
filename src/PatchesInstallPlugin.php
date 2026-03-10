@@ -24,7 +24,7 @@ use Symfony\Component\Console\Input\ArrayInput;
  * triggers re-installation of packages where patch hashes have changed, and
  * updates vendor/composer/patches.lock.json after processing.
  */
-class Plugin implements PluginInterface, EventSubscriberInterface {
+class PatchesInstallPlugin implements PluginInterface, EventSubscriberInterface {
 
   /**
    * Flag to indicate if this is a fresh install (vendor/composer doesn't exist yet).
