@@ -3,15 +3,14 @@
 namespace Jobiqo\ComposerPatchesInstall;
 
 use Composer\Composer;
-use Composer\Console\Application;
 use Composer\DependencyResolver\Operation\UninstallOperation;
 use Composer\EventDispatcher\EventSubscriberInterface;
+use Composer\Installer;
 use Composer\IO\IOInterface;
 use Composer\Package\AliasPackage;
 use Composer\Plugin\PluginInterface;
 use Composer\Script\Event;
 use Composer\Script\ScriptEvents;
-use Symfony\Component\Console\Input\ArrayInput;
 
 /**
  * Composer plugin that detects patches.lock.json changes and triggers re-patching of affected packages.
@@ -465,20 +464,14 @@ class Plugin implements PluginInterface, EventSubscriberInterface {
 
       $io->write("<info>Running composer install to reinstall packages...</info>");
 
-      // Trigger a fresh install to reinstall the removed packages with patches.
-      // Use ArrayInput to run the install command programmatically.
-      $installArgs = [
-        'command' => 'install',
-        '--no-scripts' => TRUE,
-      ];
-      if (!$devMode) {
-        $installArgs['--no-dev'] = TRUE;
-      }
-      $input = new ArrayInput($installArgs);
-
-      $application = new Application();
-      $application->setAutoExit(FALSE);
-      $exitCode = $application->run($input);
+      // Use the existing Composer instance directly to avoid spawning a new
+      // Application, which would create fresh plugin instances and bypass the
+      // static $isReinstalling guard, causing an infinite loop.
+      $installer = Installer::create($io, $composer);
+      $installer->setUpdate(FALSE);
+      $installer->setDevMode($devMode);
+      $installer->setRunScripts(FALSE);
+      $exitCode = $installer->run();
 
       if ($exitCode !== 0) {
         $io->write("<error>Composer install failed with exit code $exitCode</error>");
