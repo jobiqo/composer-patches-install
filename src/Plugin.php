@@ -27,13 +27,6 @@ use Symfony\Component\Console\Input\ArrayInput;
 class Plugin implements PluginInterface, EventSubscriberInterface {
 
   /**
-   * Flag to prevent recursion during package reinstallation.
-   *
-   * @var bool
-   */
-  protected static bool $isReinstalling = FALSE;
-
-  /**
    * Flag to indicate if this is a fresh install (vendor/composer doesn't exist yet).
    */
   protected static bool $isFreshInstall = TRUE;
@@ -77,14 +70,49 @@ class Plugin implements PluginInterface, EventSubscriberInterface {
    * Handles the post-install-cmd event.
    */
   public function onPostInstall(Event $event): void {
-    self::checkPatchChanges($event);
+    $this->checkPatchChanges($event);
   }
 
   /**
    * Handles the post-update-cmd event.
    */
   public function onPostUpdate(Event $event): void {
-    self::checkPatchChanges($event);
+    $this->checkPatchChanges($event);
+  }
+
+  /**
+   * Checks if we are currently in the process of reinstalling packages to prevent infinite loops.
+    *
+    * @param Event $event
+    *   The Composer event.
+    *
+    * @return bool
+    *   TRUE if we are currently reinstalling, FALSE otherwise.
+   */
+  public function isReinstalling(Event $event): bool {
+    $composer = $event->getComposer();
+    $baseDir = dirname($composer->getConfig()->getConfigSource()->getName());
+    $lockFile = $baseDir . '/vendor/composer/patches.reinstall.lock';
+    // If file is older than 1 hour, assume it's a stale lock and not an active
+    // reinstall to prevent blocking installs indefinitely.
+    if (file_exists($lockFile) && (time() - filemtime($lockFile) > 3600)) {
+      @unlink($lockFile);
+    }
+    return file_exists($lockFile);
+  }
+
+  /**
+   * Sets a lock file to indicate that we are currently in the process of reinstalling packages.
+   */
+  public function setReinstalling(Composer $composer, bool $value): void {
+    $baseDir = dirname($composer->getConfig()->getConfigSource()->getName());
+    $lockFile = $baseDir . '/vendor/composer/patches.reinstall.lock';
+    if ($value) {
+      @file_put_contents($lockFile, time());
+    }
+    else {
+      @unlink($lockFile);
+    }
   }
 
   /**
@@ -93,7 +121,7 @@ class Plugin implements PluginInterface, EventSubscriberInterface {
    * @param Event $event
    *   The Composer event.
    */
-  public static function checkPatchChanges(Event $event): void {
+  public function checkPatchChanges(Event $event): void {
     $composer = $event->getComposer();
     $io = $event->getIO();
     $devMode = $event->isDevMode();
@@ -116,7 +144,7 @@ class Plugin implements PluginInterface, EventSubscriberInterface {
     }
 
     // Prevent infinite recursion when we trigger reinstallations.
-    if (self::$isReinstalling) {
+    if ($this->isReinstalling($event)) {
       return;
     }
 
@@ -141,7 +169,7 @@ class Plugin implements PluginInterface, EventSubscriberInterface {
         foreach ($patchedPackages as $packageName) {
           $io->write('  - ' . $packageName);
         }
-        if (!self::reinstallPackages($patchedPackages, $composer, $io, $devMode)) {
+        if (!$this->reinstallPackages($patchedPackages, $composer, $io, $devMode)) {
           $io->write('<error>PatchesLockPlugin: Failed to reinstall packages, not updating lock file cache.</error>');
           return;
         }
@@ -161,7 +189,7 @@ class Plugin implements PluginInterface, EventSubscriberInterface {
         foreach ($patchedPackages as $packageName) {
           $io->write('  - ' . $packageName);
         }
-        if (!self::reinstallPackages($patchedPackages, $composer, $io, $devMode)) {
+        if (!$this->reinstallPackages($patchedPackages, $composer, $io, $devMode)) {
           $io->write('<error>PatchesLockPlugin: Failed to reinstall packages, not updating lock file cache.</error>');
           return;
         }
@@ -188,7 +216,7 @@ class Plugin implements PluginInterface, EventSubscriberInterface {
     }
 
     // Reinstall the affected packages.
-    if (!self::reinstallPackages($packagesToReinstall, $composer, $io, $devMode)) {
+    if (!$this->reinstallPackages($packagesToReinstall, $composer, $io, $devMode)) {
       $io->write('<error>PatchesLockPlugin: Failed to reinstall packages, not updating lock file cache.</error>');
       return;
     }
@@ -399,8 +427,8 @@ class Plugin implements PluginInterface, EventSubscriberInterface {
    * @return bool
    *   TRUE if reinstallation was successful, FALSE on failure.
    */
-  protected static function reinstallPackages(array $packageNames, Composer $composer, IOInterface $io, bool $devMode = TRUE): bool {
-    self::$isReinstalling = TRUE;
+  protected function reinstallPackages(array $packageNames, Composer $composer, IOInterface $io, bool $devMode = TRUE): bool {
+    $this->setReinstalling($composer, TRUE);
 
     try {
       $localRepository = $composer->getRepositoryManager()->getLocalRepository();
@@ -473,7 +501,7 @@ class Plugin implements PluginInterface, EventSubscriberInterface {
       return FALSE;
     }
     finally {
-      self::$isReinstalling = FALSE;
+      $this->setReinstalling($composer, FALSE);
     }
   }
 
