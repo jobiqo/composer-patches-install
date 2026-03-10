@@ -33,6 +33,11 @@ class Plugin implements PluginInterface, EventSubscriberInterface {
   protected static bool $isReinstalling = FALSE;
 
   /**
+   * Flag to indicate if this is a fresh install (vendor/composer doesn't exist yet).
+   */
+  protected static bool $isFreshInstall = TRUE;
+
+  /**
    * {@inheritdoc}
    */
   public function activate(Composer $composer, IOInterface $io): void {}
@@ -62,7 +67,9 @@ class Plugin implements PluginInterface, EventSubscriberInterface {
    * Handles the pre-install-cmd event.
    */
   public function onPreInstall(Event $event): void {
-    self::preInstall($event);
+    // This hook is only called when composer already installed something before,
+    // so we always know this is not a fresh install.
+    self::$isFreshInstall = FALSE;
   }
 
   /**
@@ -80,41 +87,6 @@ class Plugin implements PluginInterface, EventSubscriberInterface {
   }
 
   /**
-   * Pre-install hook to optimize fresh installs.
-   *
-   * On a fresh install (no vendor/composer directory), we copy the patches lock
-   * file early. This prevents unnecessary reinstalls since the first composer
-   * install will already apply all patches correctly.
-   *
-   * @param Event $event
-   *   The Composer event.
-   */
-  public static function preInstall(Event $event): void {
-    $composer = $event->getComposer();
-    $io = $event->getIO();
-
-    $baseDir = dirname($composer->getConfig()->getConfigSource()->getName());
-    $vendorComposerDir = $baseDir . '/vendor/composer';
-    $sourceLockFile = $baseDir . '/patches.lock.json';
-    $cachedLockFile = $vendorComposerDir . '/patches.lock.json';
-
-    // Only act on fresh installs where vendor/composer doesn't exist yet.
-    if (is_dir($vendorComposerDir)) {
-      return;
-    }
-
-    if (!file_exists($sourceLockFile)) {
-      return;
-    }
-
-    // Create vendor/composer and copy lock file to skip reinstalls in post-install.
-    @mkdir($vendorComposerDir, 0755, TRUE);
-    if (copy($sourceLockFile, $cachedLockFile)) {
-      $io->write('<info>PatchesLockPlugin: Fresh install detected, pre-initialized patches.lock.json cache.</info>');
-    }
-  }
-
-  /**
    * Handler for post-install-cmd and post-update-cmd events.
    *
    * @param Event $event
@@ -125,24 +97,32 @@ class Plugin implements PluginInterface, EventSubscriberInterface {
     $io = $event->getIO();
     $devMode = $event->isDevMode();
 
+    $baseDir = dirname($composer->getConfig()->getConfigSource()->getName());
+    $sourceLockFile = $baseDir . '/patches.lock.json';
+    $cachedLockFile = $baseDir . '/vendor/composer/patches.lock.json';
+
+    // If there is no source lock file, there's nothing to check, so we can skip everything.
+    if (!file_exists($sourceLockFile)) {
+      return;
+    }
+
+    // Skip fresh installations, composer patches does everything correct on first install.
+    if (self::$isFreshInstall) {
+      // Create vendor/composer and copy lock file to skip reinstalls in post-install.
+      self::copyLockFile($sourceLockFile, $cachedLockFile);
+      $io->write('<info>PatchesLockPlugin: Fresh install detected, pre-initialized patches.lock.json cache.</info>');
+      return;
+    }
+
     // Prevent infinite recursion when we trigger reinstallations.
     if (self::$isReinstalling) {
       return;
     }
 
-    $baseDir = dirname($composer->getConfig()->getConfigSource()->getName());
-    $sourceLockFile = $baseDir . '/patches.lock.json';
-    $cachedLockFile = $baseDir . '/vendor/composer/patches.lock.json';
-
     // Determine dev-only package names so we can skip them in --no-dev mode.
     $devPackageNames = [];
     if (!$devMode) {
       $devPackageNames = self::getDevPackageNames($baseDir, $io);
-    }
-
-    if (!file_exists($sourceLockFile)) {
-      $io->write('<warning>patches.lock.json not found, skipping patches lock check.</warning>');
-      return;
     }
 
     $sourceData = self::readLockFile($sourceLockFile);
