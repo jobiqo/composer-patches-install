@@ -2,7 +2,11 @@
 
 A Composer plugin that detects `patches.lock.json` changes and automatically triggers re-patching of affected packages. See https://github.com/cweagans/composer-patches/issues/583
 
-## What it does
+This is relevant for sites that use a `git pull && composer install` workflow. With composer-patches 2.x this is not sufficient anymore to get any `patches.lock.json` changes installed. The workaround is `git pull && composer install && composer patches-repatch`, but has downsides:
+* Local development: developers need to remember a much longer command when they update their checkout, `composer install` is not enough anymore.
+* Longer production downtimes than necessary. A full `composer patches-repatch` triggers *all* patched dependencies to be patched again, which is slow.
+
+## What it does internally
 
 1. On a **fresh install** (no `vendor/` directory), pre-initialises the `patches.lock.json` cache so the first `composer install` does not trigger unnecessary reinstalls.
 2. On subsequent **composer install**, compares `patches.lock.json` against the cached copy in `vendor/composer/patches.lock.json`.
@@ -21,23 +25,8 @@ A Composer plugin that detects `patches.lock.json` changes and automatically tri
 composer require jobiqo/composer-patches-install
 ```
 
-Because this is a Composer plugin, the `pre-install-cmd`, `post-install-cmd`, and `post-update-cmd` hooks are **registered automatically** — no manual entries in your project's `scripts` section are required.
-
 ## Usage
 
 Generate a `patches.lock.json` file with composer-patches in the root of your project (next to `composer.json`). The plugin reads the `patches` key and its `sha256` hashes (as written by `cweagans/composer-patches` v2) to decide which packages need to be reinstalled.
 
-### Migrating from the script-handler approach
-
-If you previously called the static methods directly in your `composer.json` scripts, remove those entries:
-
-```json
-// Remove these:
-"scripts": {
-    "pre-install-cmd": ["DrupalProject\\composer\\PatchesLockPlugin::preInstall"],
-    "post-install-cmd": ["DrupalProject\\composer\\PatchesLockPlugin::checkPatchChanges"],
-    "post-update-cmd":  ["DrupalProject\\composer\\PatchesLockPlugin::checkPatchChanges"]
-}
-```
-
-Also remove the `autoload.classmap` entry for the old `PatchesLockPlugin.php` script file.
+Run `composer install` and patch changes will be picked up automatically.
